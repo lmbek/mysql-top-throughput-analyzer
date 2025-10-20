@@ -1,0 +1,94 @@
+services:
+  monitor:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    container_name: monitor
+    environment:
+      # Values are taken from .env automatically by Compose; defaults below suppress warnings when unset.
+      MON_DSN: ${MON_DSN:-app:apppass@tcp(monitor-mysql:3306)/appdb?parseTime=true}
+      MON_INTERVAL: ${MON_INTERVAL:-5s}
+      MON_READ_THRESHOLD: ${MON_READ_THRESHOLD:-5MB}
+      MON_WRITE_THRESHOLD: ${MON_WRITE_THRESHOLD:-5MB}
+      MON_MIN_PRINT_BYTES: ${MON_MIN_PRINT_BYTES:-5MB}
+      MON_AVG_READ_BYTES: ${MON_AVG_READ_BYTES:-200}
+      MON_AVG_SENT_BYTES: ${MON_AVG_SENT_BYTES:-200}
+      MON_TOP: ${MON_TOP:-5}
+      MON_SIMPLE: ${MON_SIMPLE:-1}
+    ports:
+      - "8088:8088"
+    depends_on:
+      monitor-mysql:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - monitoring-net
+
+  monitor-mysql:
+    build:
+      context: ./mysql
+      dockerfile: Dockerfile
+    container_name: monitor-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-appdb}
+      MYSQL_USER: ${MYSQL_USER:-app}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-apppass}
+    volumes:
+      - ./.docker/mysql:/var/lib/mysql
+      - ./mysql/initdb.d:/docker-entrypoint-initdb.d:ro
+      - ./mysql/config.cnf:/etc/mysql/conf.d/config.cnf:ro
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "$$MYSQL_USER", "-p$$MYSQL_PASSWORD"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - monitoring-net
+
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: loki
+    volumes:
+      - ./.docker/loki:/loki
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+    networks:
+      - monitoring-net
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: promtail
+    command: ["--config.file=/etc/promtail/config.yml"]
+    volumes:
+      - ./.docker/promtail:/positions
+      - ./.docker/promtail/config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+    networks:
+      - monitoring-net
+
+  grafana:
+    image: grafana/grafana:10.4.3
+    container_name: grafana
+    volumes:
+      - ./.docker/grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - loki
+    restart: unless-stopped
+    networks:
+      - monitoring-net
+
+
+networks:
+  monitoring-net:

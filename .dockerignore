@@ -1,0 +1,27 @@
+# Exclude runtime and local files from Docker build context
+
+# Project-local persistent data (bind mounts)
+.docker
+
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# CI configs (not needed in image)
+.github
+
+# Coverage and build artifacts
+coverage.out
+coverage.txt
+coverage.html
+monitor_queries
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+
+# Node/yarn (if any future additions)
+node_modules

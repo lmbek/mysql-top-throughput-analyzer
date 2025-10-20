@@ -1,0 +1,25 @@
+name: Sync PR Source Branch After Merge
+
+on:
+    pull_request:
+        types: [closed]
+
+permissions:
+    contents: write  # Allow pushing to branches
+
+jobs:
+    sync-source-branch:
+        if: github.event.pull_request.merged == true
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout base branch (where PR was merged)
+              uses: actions/checkout@v4
+              with:
+                  ref: ${{ github.event.pull_request.base.ref }}
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Push merged commit to original source branch
+              run: |
+                  git push origin \
+                    ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.head.ref }} --force
