@@ -1,0 +1,65 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /positions/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Keep only running containers
+      - source_labels: [__meta_docker_container_state]
+        regex: running
+        action: keep
+      # Useful labels
+      - source_labels: [__meta_docker_container_name]
+        target_label: container
+      - source_labels: [__meta_docker_container_id]
+        target_label: container_id
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: compose_service
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        target_label: compose_project
+      - source_labels: [__meta_docker_container_label_org_opencontainers_image_title]
+        target_label: image_title
+      - source_labels: [__meta_docker_container_label_org_opencontainers_image_version]
+        target_label: image_version
+      - source_labels: [__meta_docker_container_network_mode]
+        target_label: network_mode
+      # set a generic service label; fall back to container name when compose_service missing
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+      - source_labels: [container]
+        target_label: service
+        action: replace
+        regex: ^$
+        replacement: "$1"
+
+    pipeline_stages:
+      - docker: {}
+      - json:
+          expressions:
+            time: time
+            level: level
+            msg: msg
+            digest: digest
+            sample: sample
+            read: read
+            write: write
+            rank: rank
+      - labels:
+          level:
+          service:
+          compose_service:
+          container:
+          container_id:
+      - timestamp:
+          source: time
+          format: RFC3339Nano
